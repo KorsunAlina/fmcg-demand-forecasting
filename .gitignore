@@ -1,6 +1,11 @@
-/.pytest_cache
-/mlartifacts
+.pytest_cache
+mlartifacts
 __pycache__
-/venv
+venv
+model_output/
+mlruns/
 *.db
 *.csv
+*.parquet
+*.pkl
+*.joblib

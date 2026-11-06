@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: airflow_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow_password
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      retries: 5
+      timeout: 5s
+
+  airflow-standalone:
+    image: apache/airflow:2.9.2-python3.11
+    container_name: airflow_local
+    user: "0:0"
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Підключення до PostgreSQL замість SQLite
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow_password@postgres:5432/airflow
+      # Вмикаємо повноцінний паралельний виконавець
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__PARALLELISM=4
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=4
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - AIRFLOW__WEBSERVER__SECRET_KEY=secret_key_for_local_dev_12345
+      - AIRFLOW__WEBSERVER__BASE_URL=http://localhost:8080
+      - AIRFLOW__WEBSERVER__WEB_SERVER_HOST=0.0.0.0
+      - AIRFLOW__WEBSERVER__WEB_SERVER_PORT=8080
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - MLFLOW_TRACKING_URI=file:/opt/program/data/mlruns
+      - MLFLOW_ALLOW_FILE_STORE=true
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./dataset_104w_50s.parquet:/opt/airflow/data/dataset_104w_50s.parquet
+      - ./artifacts:/opt/airflow/artifacts
+      - ./forecasts.parquet:/opt/airflow/forecasts.parquet
+      - ./mlruns:/opt/airflow/mlruns
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/opt/project
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "airflow db migrate &&
+               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
+               airflow webserver --port 8080 &
+               airflow scheduler"
+volumes:
+  postgres-db-volume:

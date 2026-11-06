@@ -1,13 +1,30 @@
 import pandas as pd
-import numpy as np
 
-def generate_sample_data(n_weeks: int = 20) -> pd.DataFrame:
-    np.random.seed(42)
-    weeks = list(range(1, n_weeks + 1))
-    sales = np.random.poisson(lam=50, size=n_weeks) + np.linspace(10, 30, n_weeks)
-    return pd.DataFrame({"week": weeks, "sales": sales})
 
-def create_point_in_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.sort_values("week").copy()
-    df["sales_lag_1"] = df["sales"].shift(1)
-    return df.dropna().reset_index(drop=True)
+def create_point_in_time_features(df: pd.DataFrame, lags: list[int] = [1, 2, 4, 52], windows:list[int] = [4, 8, 12]):
+
+    df = df.copy()
+
+    # Sorting by prduct and week
+    df = df.sort_values(["series_id", "week"]).reset_index(drop=True)
+
+    for lag in lags:
+        df[f"target_lag_{lag}"] = df.groupby("series_id")["target"].shift(lag)
+
+    # Rolling stats
+    grouped_target = df.groupby("series_id")["target"]
+
+    for window in windows:
+        # Rolling mean
+        df[f"rolling_mean_{window}"] = grouped_target.transform(
+            lambda x: x.shift(1).rolling(window=window, min_periods=1).mean()
+        )
+        # Rolling median
+        df[f"rolling_median_{window}"] = grouped_target.transform(
+            lambda x: x.shift(1).rolling(window=window, min_periods=1).median()
+        )
+
+    max_lag = max(lags)
+    df = df.dropna(subset=[f"target_lag_{max_lag}"]).reset_index(drop=True)
+
+    return df
